@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🕷️ Spider Web Catcher | Stark Tech</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+</head>
+
+<body>
+    <div id="container">
+        <div id="videoOverlay"></div>
+        <div class="scan-line"></div>
+        <video id="videoEl" playsinline muted></video>
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Suit Selector -->
+        <div id="suitSelector">
+            <div class="suit-option active" data-suit="classic" onclick="selectSuit('classic')">CLASSIC</div>
+            <div class="suit-option" data-suit="symbiote" onclick="selectSuit('symbiote')">SYMBIOTE</div>
+            <div class="suit-option" data-suit="iron" onclick="selectSuit('iron')">IRON SPIDER</div>
+        </div>
+
+        <!-- Stark HUD -->
+        <div id="hud">
+            <div class="hud-panel">
+                <div class="hud-label">Lifelines</div>
+                <div class="hud-value" id="lifelineVal">❤️❤️❤️</div>
+            </div>
+
+            <div class="hud-panel">
+                <div class="hud-label">Score Data</div>
+                <div class="hud-value" id="scoreVal">0</div>
+            </div>
+            
+            <div id="statusPanel">System Standby...</div>
+
+            <div class="hud-panel">
+                <div class="hud-label">Mission Clock</div>
+                <div class="hud-value" id="timerVal">10</div>
+            </div>
+        </div>
+
+        <!-- Tactical Data Display -->
+        <div class="tactical-data">
+            <div class="tactical-line">SIGNAL: STABLE [98.4%]</div>
+            <div class="tactical-line">LATENCY: 12ms</div>
+            <div class="tactical-line">WEB-FLUID: NOMINAL</div>
+            <div class="tactical-line" id="handDetection">HANDS DETECTED: 0</div>
+        </div>
+
+        <!-- Quiz HUD -->
+        <div id="quizHUD" class="hidden">
+            <div class="quiz-box">
+                <div class="hud-label">SYSTEM RECOVERY INITIATED</div>
+                <h2 id="quizQuestion">5 + 5 = ?</h2>
+                <div class="quiz-options" id="quizOptions">
+                    <!-- Options inject here -->
+                </div>
+                <p id="quizProgress">Progress: 0 / 5</p>
+            </div>
+        </div>
+
+        <div id="instructions">
+            [ PINCH ] TO DEPLOY WEB &nbsp;|&nbsp; [ TARGET ] GLOWING OBJECTS &nbsp;|&nbsp; [ DEPOSIT ] IN DROP ZONE
+        </div>
+
+        <div id="loadingScreen">
+            <div class="spider-logo">🕷️</div>
+            <h1>STARK TECH OS</h1>
+            <p id="loadMsg">Bioscan initializing...</p>
+        </div>
+
+        <div id="gameOverScreen" class="hidden">
+            <h2>MISSION FAILED</h2>
+            <div class="final-stats">
+                <p>SCORE: <span id="finalScore">0</span></p>
+                <p>ITEMS SECURED: <span id="finalCaught">0</span></p>
+            </div>
+            <button id="restartBtn">📡 REBOOT SYSTEM</button>
+        </div>
+
+        <button id="audioInitBtn">📡 INITIALIZE AUDIO CONTEXT</button>
+    </div>
+
+    <!-- MediaPipe -->
+    <script src="https://unpkg.com/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <!-- Game Initialization -->
+    <script src="script.js"></script>
+</body>
+
+</html>
