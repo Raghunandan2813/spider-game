@@ -101,7 +101,14 @@ class WebSimulation {
                 const ox = dx * diff, oy = dy * diff;
                 if (i > 0) { p1.x -= ox; p1.y -= oy; }
                 p2.x += ox; p2.y += oy;
+                
+                // Add "shot curve" - segments in the middle sag more when traveling
+                if (progress < 1 && i > 0) {
+                    const midFactor = Math.sin((i / this.segments.length) * Math.PI);
+                    p2.y += midFactor * 2 * (1 - progress); 
+                }
             }
+
             if (target && progress >= 1) {
                 const last = this.segments[this.segments.length - 1];
                 last.x = target.x; last.y = target.y;
@@ -111,15 +118,62 @@ class WebSimulation {
 
     draw(ctx, color) {
         if (this.segments.length < 2) return;
+        
+        // Draw main core
         ctx.beginPath();
         ctx.moveTo(this.segments[0].x, this.segments[0].y);
         for (let i = 1; i < this.segments.length; i++) {
             ctx.lineTo(this.segments[i].x, this.segments[i].y);
         }
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+        // Draw outer glow/strands
+        ctx.beginPath();
+        ctx.moveTo(this.segments[0].x, this.segments[0].y);
+        for (let i = 1; i < this.segments.length; i++) {
+            const p = this.segments[i];
+            const offset = Math.sin(Date.now() * 0.01 + i) * 2;
+            ctx.lineTo(p.x + offset, p.y + offset);
+        }
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.globalAlpha = 0.6; ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        // Draw cross-webbing (optional, for detail)
+        if (this.segments.length > 5) {
+            ctx.beginPath();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.3;
+            for (let i = 0; i < this.segments.length - 2; i += 3) {
+                const p1 = this.segments[i], p2 = this.segments[i+2];
+                const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+                ctx.moveTo(p1.x, p1.y); ctx.quadraticCurveTo(mx + 5, my + 5, p2.x, p2.y);
+            }
+            ctx.stroke(); ctx.globalAlpha = 1.0;
+        }
     }
 }
+
+// ─── Particle System ──────────────────────────────────────────────────────
+class Particle {
+    constructor(x, y, color, size = 3, vx = null, vy = null) {
+        this.x = x; this.y = y; this.color = color;
+        this.vx = vx ?? (Math.random() - 0.5) * 10;
+        this.vy = vy ?? (Math.random() - 0.5) * 10;
+        this.life = 1.0; this.decay = 0.02 + Math.random() * 0.03;
+        this.size = size;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.vy += 0.1; // gravity
+        this.life -= this.decay;
+    }
+    draw(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
 
 // ─── Smoothing ──────────────────────────────────────────────────────────────
 class LandmarkSmoother {
@@ -278,17 +332,45 @@ function processHand(handIndex) {
         if (nearest) {
             state.web.active = true; state.web.attached = false; state.web.progress = 0; state.web.target = nearest; 
             state.webSim.reset(origin.x, origin.y); sfx.playThwip(); 
+
+            // Muzzle Flash / Thwip Particles
+            for(let i=0; i<8; i++) {
+                const angle = Math.atan2(nearest.y - origin.y, nearest.x - origin.x) + (Math.random()-0.5);
+                const speed = 5 + Math.random() * 5;
+                particles.push(new Particle(origin.x, origin.y, THEMES[currentSuit].web, 3, Math.cos(angle) * speed, Math.sin(angle) * speed));
+            }
         }
+
     }
     if (pinchingNow) {
         if (state.web.active && !state.web.attached) {
-            state.web.progress = Math.min(1, state.web.progress + 0.12);
-            if (state.web.progress >= 1) { state.web.attached = true; state.web.target.grabbed = true; state.heldObject = state.web.target; if (state.heldObject.danger) { lives--; updateLives(); sfx.playExplosion(); spawnLightning(origin.x, origin.y); objects = objects.filter(o => o.id !== state.heldObject.id); state.heldObject = null; state.web.active = false; state.web.attached = false; } else sfx.playGrab(); }
+            state.web.progress = Math.min(1, state.web.progress + 0.15); // Slightly faster shot
+            if (state.web.progress >= 1) { 
+                state.web.attached = true; 
+                state.web.target.grabbed = true; 
+                state.heldObject = state.web.target; 
+                
+                // Impact Particles
+                for(let i=0; i<15; i++) particles.push(new Particle(state.web.target.x, state.web.target.y, THEMES[currentSuit].web, 2));
+
+                if (state.heldObject.danger) { 
+                    lives--; updateLives(); sfx.playExplosion(); spawnLightning(origin.x, origin.y); 
+                    objects = objects.filter(o => o.id !== state.heldObject.id); state.heldObject = null; state.web.active = false; state.web.attached = false; 
+                } else sfx.playGrab(); 
+            }
         }
+
         if (state.web.active) {
             state.webSim.update(origin, state.web.target, state.web.progress);
-            if (state.web.attached && state.heldObject) { state.heldObject.x += (origin.x - state.heldObject.x) * 0.35; state.heldObject.y += (origin.y - state.heldObject.y) * 0.35; }
+            if (state.web.attached && state.heldObject) { 
+                // Snappier "Zip" Physics with a bit of overshoot/spring
+                const dx = origin.x - state.heldObject.x;
+                const dy = origin.y - state.heldObject.y;
+                state.heldObject.x += dx * 0.45; 
+                state.heldObject.y += dy * 0.45; 
+            }
         }
+
     }
     if (!pinchingNow && state.lastPinch) {
         if (state.heldObject) {
@@ -378,7 +460,11 @@ function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height); drawCity();
     if (screenFlash > 0) { ctx.fillStyle = `rgba(0,180,255,${screenFlash * 0.15})`; ctx.fillRect(0, 0, canvas.width, canvas.height); screenFlash -= 0.05; }
     if (gameState === 'playing' || gameState === 'quiz') {
+        // Particles
+        particles.forEach((p, idx) => { p.update(); p.draw(ctx); if (p.life <= 0) particles.splice(idx, 1); });
+
         objects.forEach(o => { if (!o.grabbed) { o.x += o.vx; o.y += o.vy; if (o.x < 30 || o.x > canvas.width - 30) o.vx *= -1; if (o.y < 30 || o.y > canvas.height - 30) o.vy *= -1; } });
+
         handStates.forEach((state, i) => { 
             if (state.persistence > 0 || state.landmarks) {
                 if (state.landmarks) {
