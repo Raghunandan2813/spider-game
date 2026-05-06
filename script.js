@@ -197,7 +197,8 @@ const smoothers = [new LandmarkSmoother(0.3), new LandmarkSmoother(0.3)];
 const THEMES = {
     classic: { primary: '#f00', secondary: '#0055ff', web: '#fff', accent: '#00e5ff', city: '#00050a' },
     symbiote: { primary: '#111', secondary: '#222', web: '#ccc', accent: '#b44dff', city: '#05000a' },
-    iron: { primary: '#c00', secondary: '#c90', web: '#ff0', accent: '#ffe033', city: '#0a0a05' }
+    iron: { primary: '#c00', secondary: '#c90', web: '#ff0', accent: '#ffe033', city: '#0a0a05' },
+    miles: { primary: '#111', secondary: '#f00', web: '#0ff', accent: '#ff0044', city: '#0a0005' }
 };
 let currentSuit = 'classic';
 
@@ -416,7 +417,7 @@ function drawObject(o) {
     ctx.font = `${o.radius * 1.2}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(o.emoji, 0, 0); ctx.restore();
 }
 
-const SUIT_COLORS = { classic: { primary: '#f00', secondary: '#0055ff', web: '#000' }, symbiote: { primary: '#111', secondary: '#000', web: '#fff' }, iron: { primary: '#c00', secondary: '#c90', web: '#000' } };
+const SUIT_COLORS = { classic: { primary: '#f00', secondary: '#0055ff', web: '#000' }, symbiote: { primary: '#111', secondary: '#000', web: '#fff' }, iron: { primary: '#c00', secondary: '#c90', web: '#000' }, miles: { primary: '#111', secondary: '#f00', web: '#0ff' } };
 
 function drawSpiderHand(lms, pinching) {
     const conn = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12], [0, 13, 14, 15, 16], [0, 17, 18, 19, 20]];
