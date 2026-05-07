@@ -214,7 +214,7 @@ function selectSuit(name) {
 // ─── Game state ────────────────────────────────────────────────────────────
 let score = 0, caught = 0, timeLeft = 10, lives = 3, gameState = 'playing';
 let objects = [], particles = [], lightnings = [], screenFlash = 0, portalPulse = 0;
-let cityData = null;
+let cityData = null, webFluid = 100, maxWebFluid = 100, spiderSenseIntensity = 0;
 
 const handStates = [
     { landmarks: null, persistence: 0, pinching: false, heldObject: null, webSim: new WebSimulation(), web: { active: false, attached: false, progress: 0, target: null, fromX: 0, fromY: 0 } },
@@ -222,7 +222,7 @@ const handStates = [
 ];
 
 const canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d'), video = document.getElementById('videoEl');
-function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; cityData = null; }
 resizeCanvas(); window.addEventListener('resize', resizeCanvas);
 
 const OBJ_TYPES = [
@@ -313,6 +313,15 @@ function checkQuizHovers() {
     });
 }
 
+function updateStatus(msg, critical = false) {
+    const el = document.getElementById('statusPanel');
+    el.textContent = msg;
+    el.style.color = critical ? '#ff3333' : '#00e5ff';
+    el.classList.remove('flicker-anim');
+    void el.offsetWidth; // Trigger reflow
+    el.classList.add('flicker-anim');
+}
+
 // ─── Interaction ────────────────────────────────────────────────────────────
 const audioBtn = document.getElementById('audioInitBtn');
 audioBtn.addEventListener('click', () => { sfx.init(); sfx.resume(); audioBtn.classList.add('hidden'); setTimeout(() => audioBtn.style.display = 'none', 400); });
@@ -328,11 +337,16 @@ function processHand(handIndex) {
     if (!state.landmarks || gameState !== 'playing') return;
     const pinchingNow = state.pinching, origin = webOrigin(state.landmarks);
     if (pinchingNow && !state.lastPinch) {
+        if (webFluid < 10) {
+            updateStatus("WEB-FLUID LOW: RECHARGE REQUIRED", true);
+            return;
+        }
         let nearest = null, minD = 900;
         for (const o of objects) { if (!o.grabbed) { const d = Math.hypot(o.x - origin.x, o.y - origin.y); if (d < minD) { minD = d; nearest = o; } } }
         if (nearest) {
             state.web.active = true; state.web.attached = false; state.web.progress = 0; state.web.target = nearest; 
             state.webSim.reset(origin.x, origin.y); sfx.playThwip(); 
+            webFluid -= 8; updateStatus("WEB DEPLOYED");
 
             // Muzzle Flash / Thwip Particles
             for(let i=0; i<8; i++) {
@@ -356,8 +370,9 @@ function processHand(handIndex) {
 
                 if (state.heldObject.danger) { 
                     lives--; updateLives(); sfx.playExplosion(); spawnLightning(origin.x, origin.y); 
+                    updateStatus("COLLISION DETECTED: CORE DAMAGE", true);
                     objects = objects.filter(o => o.id !== state.heldObject.id); state.heldObject = null; state.web.active = false; state.web.attached = false; 
-                } else sfx.playGrab(); 
+                } else { sfx.playGrab(); updateStatus("TARGET ACQUIRED"); }
             }
         }
 
@@ -376,8 +391,13 @@ function processHand(handIndex) {
     if (!pinchingNow && state.lastPinch) {
         if (state.heldObject) {
             const px = canvas.width / 2, py = canvas.height - 100;
-            if (Math.hypot(state.heldObject.x - px, state.heldObject.y - py) < 110) { score += state.heldObject.pts; caught++; timeLeft += 3; portalPulse = 1; document.getElementById('scoreVal').textContent = score; sfx.playCollect(); screenFlash = 0.5; objects = objects.filter(o => o.id !== state.heldObject.id); }
-            else { state.heldObject.grabbed = false; state.heldObject.vx = (Math.random()-0.5)*8; state.heldObject.vy = (Math.random()-0.5)*8; }
+            if (Math.hypot(state.heldObject.x - px, state.heldObject.y - py) < 110) { 
+                score += state.heldObject.pts; caught++; timeLeft += 3; portalPulse = 1; 
+                document.getElementById('scoreVal').textContent = score; sfx.playCollect(); 
+                screenFlash = 0.5; objects = objects.filter(o => o.id !== state.heldObject.id); 
+                updateStatus("OBJECT SECURED: TIME EXTENDED");
+            }
+            else { state.heldObject.grabbed = false; state.heldObject.vx = (Math.random()-0.5)*8; state.heldObject.vy = (Math.random()-0.5)*8; updateStatus("TARGET RELEASED"); }
             state.heldObject = null;
         }
         state.web.active = false; state.web.attached = false; state.web.target = null;
@@ -461,6 +481,30 @@ function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height); drawCity();
     if (screenFlash > 0) { ctx.fillStyle = `rgba(0,180,255,${screenFlash * 0.15})`; ctx.fillRect(0, 0, canvas.width, canvas.height); screenFlash -= 0.05; }
     if (gameState === 'playing' || gameState === 'quiz') {
+        // Fluid Refill & HUD Update
+        if (webFluid < maxWebFluid) webFluid = Math.min(maxWebFluid, webFluid + 0.1);
+        const fluidEl = document.getElementById('webFluidLine');
+        fluidEl.textContent = `WEB-FLUID: ${Math.floor(webFluid)}%`;
+        fluidEl.style.color = webFluid < 20 ? '#ff3333' : '#00e5ff';
+
+        // Spider-Sense logic
+        spiderSenseIntensity *= 0.9;
+        handStates.forEach(state => {
+            if (!state.landmarks) return;
+            const origin = webOrigin(state.landmarks);
+            objects.forEach(o => {
+                if (o.danger) {
+                    const d = Math.hypot(o.x - origin.x, o.y - origin.y);
+                    if (d < 150) spiderSenseIntensity = Math.max(spiderSenseIntensity, (150 - d) / 150);
+                }
+            });
+        });
+        if (spiderSenseIntensity > 0.1) {
+            const g = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+            g.addColorStop(0.6, 'transparent'); g.addColorStop(1, `rgba(255, 0, 0, ${spiderSenseIntensity * 0.4})`);
+            ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
         // Particles
         particles.forEach((p, idx) => { p.update(); p.draw(ctx); if (p.life <= 0) particles.splice(idx, 1); });
 
