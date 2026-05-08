@@ -135,7 +135,10 @@ class WebSimulation {
             const offset = Math.sin(Date.now() * 0.01 + i) * 2;
             ctx.lineTo(p.x + offset, p.y + offset);
         }
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.globalAlpha = 0.6; ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowColor = color; ctx.shadowBlur = 15;
+        ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.globalAlpha = 0.8; ctx.stroke();
+        ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1.0;
 
         // Draw cross-webbing (optional, for detail)
@@ -168,8 +171,11 @@ class Particle {
     }
     draw(ctx) {
         ctx.globalAlpha = this.life;
+        ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color; ctx.shadowBlur = 10;
         ctx.beginPath(); ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1.0;
     }
 }
@@ -191,7 +197,7 @@ class LandmarkSmoother {
 }
 
 const sfx = new SoundManager();
-const smoothers = [new LandmarkSmoother(0.3), new LandmarkSmoother(0.3)];
+const smoothers = [new LandmarkSmoother(0.15), new LandmarkSmoother(0.15)];
 
 // ─── Theme / Suits Data ───────────────────────────────────────────────────
 const THEMES = {
@@ -410,7 +416,10 @@ function spawnLightning(x, y) { for (let i = 0; i < 12; i++) { let segments = [{
 
 function drawCity() {
     const theme = THEMES[currentSuit];
-    ctx.fillStyle = theme.city; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, theme.city);
+    grad.addColorStop(1, '#000a14');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!cityData) {
         cityData = { stars: Array.from({ length: 150 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height * 0.7, r: 0.5 + Math.random() * 1.5, bright: Math.random() })), buildings: [] };
         let x = 0; while (x < canvas.width) { const bw = 40 + Math.random() * 90, bh = 60 + Math.random() * 300; cityData.buildings.push({ x, y: canvas.height - bh, w: bw, h: bh }); x += bw + 1; }
