@@ -167,6 +167,12 @@ class Particle {
     update() {
         this.x += this.vx; this.y += this.vy;
         this.vy += 0.1; // gravity
+        // Bouncing on bottom of screen
+        if (this.y > canvas.height - this.size) {
+            this.y = canvas.height - this.size;
+            this.vy *= -0.6; // bounce and dampen
+            this.vx *= 0.8; // friction on ground
+        }
         this.life -= this.decay;
     }
     draw(ctx) {
@@ -219,8 +225,10 @@ function selectSuit(name) {
 
 // ─── Game state ────────────────────────────────────────────────────────────
 let score = 0, caught = 0, timeLeft = 10, lives = 3, gameState = 'playing';
+let wave = 1, waveTimer = 1800;
 let objects = [], particles = [], lightnings = [], screenFlash = 0, portalPulse = 0;
 let cityData = null, webFluid = 100, maxWebFluid = 100, spiderSenseIntensity = 0;
+let combo = 0, comboTimer = 0;
 
 const handStates = [
     { landmarks: null, persistence: 0, pinching: false, heldObject: null, webSim: new WebSimulation(), web: { active: false, attached: false, progress: 0, target: null, fromX: 0, fromY: 0 } },
@@ -235,14 +243,20 @@ const OBJ_TYPES = [
     { emoji: '💎', color: '#00e5ff', pts: 15, danger: false }, { emoji: '⭐', color: '#ffe033', pts: 5, danger: false },
     { emoji: '💰', color: '#ffd700', pts: 20, danger: false }, { emoji: '🔮', color: '#b44dff', pts: 12, danger: false },
     { emoji: '❤️', color: '#ff4488', pts: 8, danger: false }, { emoji: '💣', color: '#ff3333', pts: 0, danger: true },
+    { emoji: '🧪', color: '#00ff88', pts: 0, danger: false, type: 'refill' }, { emoji: '🎃', color: '#ff7700', pts: 0, danger: true, type: 'goblin' }
 ];
 
 function spawnObject() {
     if (objects.length >= 14 || gameState !== 'playing') return;
-    const isDanger = Math.random() < 0.25;
-    const type = isDanger ? OBJ_TYPES[5] : OBJ_TYPES[Math.floor(Math.random() * 5)];
+    const rand = Math.random();
+    let type;
+    if (rand < 0.10) type = OBJ_TYPES[7]; // 10% Goblin Bomb
+    else if (rand < 0.15) type = OBJ_TYPES[6]; // 5% Refill
+    else if (rand < 0.35) type = OBJ_TYPES[5]; // 20% Regular Bomb
+    else type = OBJ_TYPES[Math.floor(Math.random() * 5)]; // 65% Regular Item
+    const speedMult = 1 + (wave - 1) * 0.2;
     let x = 60 + Math.random() * (canvas.width - 120), y = 60 + Math.random() * (canvas.height - 250);
-    objects.push({ x, y, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, radius: 30, ...type, id: Math.random(), fadeIn: 0, glitchTimer: 0 });
+    objects.push({ x, y, vx: (Math.random() - 0.5) * 2 * speedMult, vy: (Math.random() - 0.5) * 2 * speedMult, radius: 30, ...type, id: Math.random(), fadeIn: 0, glitchTimer: 0 });
 }
 for (let i = 0; i < 7; i++) spawnObject();
 setInterval(spawnObject, 1800);
@@ -264,6 +278,16 @@ function endGame() {
     document.getElementById('gameOverScreen').classList.remove('hidden');
     document.getElementById('finalScore').textContent = score;
     document.getElementById('finalCaught').textContent = caught;
+    
+    // High Score Logic
+    const highScore = localStorage.getItem('spiderGameHighScore') || 0;
+    if (score > highScore) {
+        localStorage.setItem('spiderGameHighScore', score);
+        document.getElementById('highScore').textContent = score;
+        updateStatus("NEW HIGH SCORE SET!", false);
+    } else {
+        document.getElementById('highScore').textContent = highScore;
+    }
 }
 
 // ─── Quiz Logic ─────────────────────────────────────────────────────────────
@@ -376,8 +400,12 @@ function processHand(handIndex) {
 
                 if (state.heldObject.danger) { 
                     lives--; updateLives(); sfx.playExplosion(); spawnLightning(origin.x, origin.y); 
-                    updateStatus("COLLISION DETECTED: CORE DAMAGE", true);
+                    updateStatus(state.heldObject.type === 'goblin' ? "GOBLIN BOMB DETONATED!" : "COLLISION DETECTED: CORE DAMAGE", true);
                     objects = objects.filter(o => o.id !== state.heldObject.id); state.heldObject = null; state.web.active = false; state.web.attached = false; 
+                } else if (state.heldObject.type === 'refill') {
+                    webFluid = maxWebFluid; sfx.playCollect(); screenFlash = 0.3;
+                    updateStatus("WEB FLUID RESTORED TO MAXIMUM");
+                    objects = objects.filter(o => o.id !== state.heldObject.id); state.heldObject = null; state.web.active = false; state.web.attached = false;
                 } else { sfx.playGrab(); updateStatus("TARGET ACQUIRED"); }
             }
         }
@@ -398,10 +426,13 @@ function processHand(handIndex) {
         if (state.heldObject) {
             const px = canvas.width / 2, py = canvas.height - 100;
             if (Math.hypot(state.heldObject.x - px, state.heldObject.y - py) < 110) { 
-                score += state.heldObject.pts; caught++; timeLeft += 3; portalPulse = 1; 
+                combo++;
+                comboTimer = 180; // 3 seconds at 60fps
+                const points = state.heldObject.pts * combo;
+                score += points; caught++; timeLeft += 3; portalPulse = 1; 
                 document.getElementById('scoreVal').textContent = score; sfx.playCollect(); 
                 screenFlash = 0.5; objects = objects.filter(o => o.id !== state.heldObject.id); 
-                updateStatus("OBJECT SECURED: TIME EXTENDED");
+                updateStatus(`OBJECT SECURED! COMBO x${combo} (+${points})`);
             }
             else { state.heldObject.grabbed = false; state.heldObject.vx = (Math.random()-0.5)*8; state.heldObject.vy = (Math.random()-0.5)*8; updateStatus("TARGET RELEASED"); }
             state.heldObject = null;
@@ -435,6 +466,21 @@ function drawPortal() {
     for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.ellipse(0, 0, 95 * s + i * 15, 45 * s, i * Math.PI / 4, 0, Math.PI * 2); ctx.strokeStyle = theme.accent + Math.floor((0.5 - i * 0.1) * 255).toString(16).padStart(2, '0'); ctx.stroke(); }
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 55 * s); g.addColorStop(0, '#fff'); g.addColorStop(0.3, theme.accent); g.addColorStop(1, 'transparent');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 55 * s, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    
+    // Draw Combo Text
+    if (combo > 1) {
+        ctx.save();
+        ctx.font = 'bold 24px Orbitron';
+        ctx.fillStyle = theme.accent;
+        ctx.textAlign = 'center';
+        ctx.fillText(`COMBO x${combo}`, px, py - 120);
+        // Draw combo timer bar
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(px - 50, py - 110, 100, 4);
+        ctx.fillStyle = theme.accent;
+        ctx.fillRect(px - 50, py - 110, (comboTimer / 180) * 100, 4);
+        ctx.restore();
+    }
 }
 
 function drawObject(o) {
@@ -488,11 +534,35 @@ function drawSpiderHand(lms, pinching) {
 
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height); drawCity();
+    
+    // Draw Wave Info
+    ctx.font = 'bold 20px Orbitron';
+    ctx.fillStyle = THEMES[currentSuit].accent;
+    ctx.textAlign = 'center';
+    ctx.fillText(`WAVE ${wave}`, canvas.width / 2, 40);
+
     if (screenFlash > 0) { ctx.fillStyle = `rgba(0,180,255,${screenFlash * 0.15})`; ctx.fillRect(0, 0, canvas.width, canvas.height); screenFlash -= 0.05; }
     if (gameState === 'playing' || gameState === 'quiz') {
         // Fluid Refill & HUD Update
         if (webFluid < maxWebFluid) webFluid = Math.min(maxWebFluid, webFluid + 0.1);
         const fluidEl = document.getElementById('webFluidLine');
+        
+        // Combo Timer Update
+        if (comboTimer > 0) {
+            comboTimer--;
+            if (comboTimer === 0) combo = 0;
+        }
+        
+        // Wave System Update
+        if (waveTimer > 0) {
+            waveTimer--;
+            if (waveTimer === 0) {
+                wave++;
+                waveTimer = 1800; // Reset for next wave
+                updateStatus(`WAVE ${wave} INITIATED!`, false);
+                screenFlash = 0.5;
+            }
+        }
         fluidEl.textContent = `WEB-FLUID: ${Math.floor(webFluid)}%`;
         fluidEl.style.color = webFluid < 20 ? '#ff3333' : '#00e5ff';
 
@@ -517,7 +587,14 @@ function loop() {
         // Particles
         particles.forEach((p, idx) => { p.update(); p.draw(ctx); if (p.life <= 0) particles.splice(idx, 1); });
 
-        objects.forEach(o => { if (!o.grabbed) { o.x += o.vx; o.y += o.vy; if (o.x < 30 || o.x > canvas.width - 30) o.vx *= -1; if (o.y < 30 || o.y > canvas.height - 30) o.vy *= -1; } });
+        objects.forEach(o => { 
+            if (!o.grabbed) { 
+                if (o.type === 'goblin') { o.vx += (Math.random() - 0.5) * 1.5; o.vy += (Math.random() - 0.5) * 1.5; o.vx = Math.max(-5, Math.min(5, o.vx)); o.vy = Math.max(-5, Math.min(5, o.vy)); }
+                o.x += o.vx; o.y += o.vy; 
+                if (o.x < 30 || o.x > canvas.width - 30) o.vx *= -1; 
+                if (o.y < 30 || o.y > canvas.height - 30) o.vy *= -1; 
+            } 
+        });
 
         handStates.forEach((state, i) => { 
             if (state.persistence > 0 || state.landmarks) {
